@@ -1,34 +1,42 @@
 # RealtekUVCFix
 
-Experimental Lilu plugin that fixes UVC 1.5 stream negotiation for certain Realtek USB webcams on Intel Hackintosh systems running macOS Tahoe.
+Experimental Lilu plugin for enabling the built-in Realtek infrared camera on the Dell Precision 5540 under macOS Tahoe.
+
+## Tested hardware and software
+
+- Dell Precision 5540
+- Built-in Realtek IR camera
+- USB vendor ID: `0x0BDA`
+- USB product ID: `0x58F4`
+- UVC version: `0x0150`
+- macOS Tahoe 26.5
+- Darwin 25.5.0
+- Intel x86_64 Hackintosh
+- Lilu 1.7.2
+
+Dell documents the Precision 5540 infrared camera as an optional camera device separate from the standard HD camera.
 
 ## Problem
 
-Some Realtek webcams are detected by macOS and expose valid camera formats, but fail to start streaming:
+On the tested Dell Precision 5540, macOS detects the built-in IR camera and exposes its camera formats, but streaming never starts:
 
-- no camera LED
-- no first video frame
-- QuickTime, Photo Booth, FaceTime, and AVFoundation wait indefinitely
+- the IR camera LED remains off
+- no first video frame is received
+- QuickTime, Photo Booth, FaceTime, and other AVFoundation applications wait indefinitely
 
-The camera tested during development has:
-
-- Vendor ID: `0x0BDA`
-- Product ID: `0x58F4`
-- UVC version: `0x0150`
-
-The sensor, USB mapping, endpoint configuration, and MJPEG frame data were verified to work with a patched build of libuvc.
+The camera hardware, USB mapping, endpoints, and MJPEG output were verified independently with a patched build of libuvc.
 
 ## Root cause
 
-On the tested macOS Tahoe build, `UVCFamily.framework` calculates the Video Streaming Probe/Commit control length as:
+In the tested macOS Tahoe build, `UVCFamily.framework` calculates the Video Streaming Probe/Commit control length as:
 
 ```c
 length = bcdUVC >= 0x0101 ? 34 : 26;
 ```
 
-The tested UVC 1.5 camera requires the 48-byte UVC 1.5 control block.
+The Realtek UVC 1.5 camera used by the Dell Precision 5540 requires a 48-byte control block.
 
-RealtekUVCFix replaces the logic at runtime with:
+RealtekUVCFix changes the runtime logic to:
 
 ```c
 length = bcdUVC >= 0x0150 ? 48 : 34;
@@ -38,28 +46,14 @@ length = bcdUVC >= 0x0150 ? 48 : 34;
 
 RealtekUVCFix is a Lilu plugin.
 
-It hooks the macOS shared-cache page validation path and replaces one verified 17-byte instruction pattern in `UVCFamily.framework` while the dyld shared cache is mapped.
+It hooks the shared-cache page validation path and replaces one verified 17-byte instruction pattern in `UVCFamily.framework` while the dyld shared cache is mapped.
 
-It does not modify the System volume or dyld shared cache on disk.
-
-## Compatibility
-
-Currently tested only on:
-
-- Intel x86_64 Hackintosh
-- macOS Tahoe 26.5
-- Darwin 25.5.0
-- Realtek webcam VID `0x0BDA`, PID `0x58F4`
-- Lilu 1.7.2
-
-The original byte pattern was verified to occur exactly once in the tested `dyld_shared_cache_x86_64h`.
-
-Do not assume compatibility with another macOS build without verifying the pattern first.
+It does not modify the System volume or the dyld shared cache on disk.
 
 ## Installation
 
-1. Download or build `RealtekUVCFix.kext`.
-2. Place it in `EFI/OC/Kexts`.
+1. Download `RealtekUVCFix.kext` from the latest release.
+2. Copy it to `EFI/OC/Kexts`.
 3. Add it to `Kernel -> Add` after `Lilu.kext`.
 4. Reboot.
 
@@ -90,17 +84,7 @@ Check that both kexts loaded:
 kmutil showloaded | grep -iE 'Lilu|RealtekUVCFix'
 ```
 
-Then test the camera in QuickTime, Photo Booth, FaceTime, or another AVFoundation application.
-
-For debug logs:
-
-```bash
-log show --last boot \
-  --info \
-  --debug \
-  --style compact \
-  --predicate 'eventMessage CONTAINS[c] "ruvc" OR eventMessage CONTAINS[c] "RealtekUVCFix"'
-```
+Then test the IR camera in QuickTime, Photo Booth, FaceTime, or another AVFoundation application.
 
 ## Building
 
@@ -117,7 +101,7 @@ Lilu.kext
 MacKernelSDK
 ```
 
-Build with:
+Build the Release configuration:
 
 ```bash
 xcodebuild \
@@ -128,13 +112,24 @@ xcodebuild \
   build
 ```
 
+## Compatibility
+
+Currently verified only on:
+
+- Dell Precision 5540
+- Realtek IR camera `0BDA:58F4`
+- macOS Tahoe 26.5
+- Intel x86_64
+
+The patch is tied to a byte pattern found in the tested macOS build. Compatibility with other Dell models, other Realtek cameras, or later macOS builds has not yet been verified.
+
 ## Safety warning
 
 This project patches executable code loaded from the macOS dyld shared cache.
 
-A mismatched pattern or unsupported macOS update could cause instability, camera service crashes, or boot failure.
+A mismatched macOS build or changed byte pattern may cause camera-service crashes, system instability, or boot failure.
 
-Keep a working EFI backup and an easy way to disable or remove the kext.
+Keep a working EFI backup and a reliable method to disable or remove the kext.
 
 ## Credits
 
