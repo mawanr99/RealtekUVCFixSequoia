@@ -435,7 +435,7 @@
 				MODULE_NAME = com.trungkien.RealtekUVCFix;
 				MODULE_START = "$(PRODUCT_NAME)_kern_start";
 				MODULE_STOP = "$(PRODUCT_NAME)_kern_stop";
-				MODULE_VERSION = 0.1.0;
+				MODULE_VERSION = 0.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.trungkien.RealtekUVCFix;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = kext;
@@ -461,7 +461,7 @@
 				MODULE_NAME = com.trungkien.RealtekUVCFix;
 				MODULE_START = "$(PRODUCT_NAME)_kern_start";
 				MODULE_STOP = "$(PRODUCT_NAME)_kern_stop";
-				MODULE_VERSION = 0.1.0;
+				MODULE_VERSION = 0.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.trungkien.RealtekUVCFix;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = kext;
