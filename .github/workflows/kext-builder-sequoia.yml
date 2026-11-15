@@ -22,7 +22,7 @@ jobs:
       - name: Verify macOS 15.8.2
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           sw_vers
 
@@ -42,7 +42,8 @@ jobs:
       - name: Select Xcode
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
+
           xcodebuild -version
           xcode-select -p
           xcrun --sdk macosx --show-sdk-version
@@ -57,7 +58,7 @@ jobs:
       - name: Download Lilu DEBUG SDK
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           curl -fL --retry 3 \
             https://github.com/acidanthera/Lilu/releases/download/1.7.2/Lilu-1.7.2-DEBUG.zip \
@@ -71,13 +72,17 @@ jobs:
           LILU_KEXT="$(find "$RUNNER_TEMP/lilu" \
             -type d -name Lilu.kext -print -quit)"
 
-          test -n "$LILU_KEXT"
+          if [[ -z "$LILU_KEXT" ]]; then
+            echo "::error::Lilu.kext was not found in the downloaded archive"
+            exit 1
+          fi
+
           ditto "$LILU_KEXT" "$GITHUB_WORKSPACE/Lilu.kext"
 
       - name: Verify dependencies
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           test -f MacKernelSDK/Library/x86_64/libkmod.a
           test -f Lilu.kext/Contents/Resources/Headers/plugin_start.hpp
@@ -85,11 +90,10 @@ jobs:
 
           echo "Dependencies verified."
 
-
       - name: Build RealtekUVCFix
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
 
           mkdir -p "$GITHUB_WORKSPACE/build/Release"
 
@@ -99,6 +103,7 @@ jobs:
             -configuration Release \
             -arch x86_64 \
             ONLY_ACTIVE_ARCH=NO \
+            PRODUCT_NAME=RealtekUVCFix \
             CONFIGURATION_BUILD_DIR="$GITHUB_WORKSPACE/build/Release" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -108,39 +113,68 @@ jobs:
       - name: Verify kext
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           KEXT="build/Release/RealtekUVCFix.kext"
           BINARY="$KEXT/Contents/MacOS/RealtekUVCFix"
 
-          test -d "$KEXT"
+          if [[ ! -d "$KEXT" ]]; then
+            echo "::error::Kext bundle not found: $KEXT"
+            echo "Available build outputs:"
+            find build -maxdepth 5 -print
+            exit 1
+          fi
+
           test -f "$KEXT/Contents/Info.plist"
           test -f "$BINARY"
 
+          echo "===== INFO PLIST ====="
           plutil -lint "$KEXT/Contents/Info.plist"
+
+          echo
+          echo "===== BINARY ====="
           file "$BINARY"
+
+          echo
+          echo "===== ARCHITECTURE ====="
           lipo "$BINARY" -verify_arch x86_64
+          lipo "$BINARY" -archs
+
+          echo
+          echo "Kext verification successful."
 
       - name: Package kext
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
+
+          KEXT="build/Release/RealtekUVCFix.kext"
+          ZIP="artifacts/RealtekUVCFix-Sequoia-15.8.2-x86_64.zip"
+
+          if [[ ! -d "$KEXT" ]]; then
+            echo "::error::Kext not found: $KEXT"
+            find build -maxdepth 5 -print
+            exit 1
+          fi
 
           mkdir -p artifacts
 
           ditto -c -k --sequesterRsrc --keepParent \
-            build/Release/RealtekUVCFixSequoia.kext \
-            artifacts/RealtekUVCFix-macOS-15.8.2-24H232-x86_64.zip
+            "$KEXT" \
+            "$ZIP"
 
-          shasum -a 256 artifacts/*.zip
+          echo "===== PACKAGE ====="
+          ls -lh "$ZIP"
+
+          echo "Package created successfully."
 
       - name: Upload kext artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RealtekUVCFix-macOS-15.8.2-24H232-x86_64
-          path: artifacts/RealtekUVCFix-macOS-15.8.2-24H232-x86_64.zip
+          name: RealtekUVCFix-Sequoia-15.8.2-x86_64
+          path: artifacts/RealtekUVCFix-Sequoia-15.8.2-x86_64.zip
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
 
       - name: Upload build log
         if: always()
