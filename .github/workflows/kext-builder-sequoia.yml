@@ -1,0 +1,151 @@
+
+name: Sequoia RealtekUVCFix
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Kext - macOS Sequoia 15.8.2
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Verify runner version
+        shell: bash
+        run: |
+          set -e
+          sw_vers
+          echo "Architecture: $(uname -m)"
+
+          [[ "$(sw_vers -productVersion)" == "15.8.2" ]] || {
+            echo "::error::Expected macOS 15.8.2"
+            exit 1
+          }
+
+          [[ "$(sw_vers -buildVersion)" == "24H232" ]] || {
+            echo "::error::Expected build 24H232"
+            exit 1
+          }
+
+          [[ "$(uname -m)" == "x86_64" ]] || {
+            echo "::error::Expected Intel x86_64 runner"
+            exit 1
+          }
+
+      - name: Select Xcode
+        shell: bash
+        run: |
+          set -e
+          xcodebuild -version
+          xcode-select -p
+          xcrun --sdk macosx --show-sdk-version
+
+      - name: Download MacKernelSDK
+        uses: actions/checkout@v4
+        with:
+          repository: acidanthera/MacKernelSDK
+          path: MacKernelSDK
+          fetch-depth: 1
+
+      - name: Download Lilu DEBUG SDK
+        shell: bash
+        run: |
+          set -e
+
+          curl -fL --retry 3 \
+            https://github.com/acidanthera/Lilu/releases/download/1.7.2/Lilu-1.7.2-DEBUG.zip \
+            -o "$RUNNER_TEMP/Lilu-DEBUG.zip"
+
+          mkdir -p "$RUNNER_TEMP/lilu"
+
+          unzip -q "$RUNNER_TEMP/Lilu-DEBUG.zip" \
+            -d "$RUNNER_TEMP/lilu"
+
+          LILU_KEXT="$(find "$RUNNER_TEMP/lilu" \
+            -type d -name Lilu.kext -print -quit)"
+
+          test -n "$LILU_KEXT"
+          ditto "$LILU_KEXT" "$GITHUB_WORKSPACE/Lilu.kext"
+
+      - name: Verify dependencies
+        shell: bash
+        run: |
+          set -e
+
+          test -f MacKernelSDK/Library/x86_64/libkmod.a
+          test -f Lilu.kext/Contents/Resources/Headers/plugin_start.hpp
+          test -f Lilu.kext/Contents/Resources/Library/plugin_start.cpp
+
+          echo "Dependencies verified."
+
+      - name: Build RealtekUVCFix
+        shell: bash
+        run: |
+          set -o pipefail
+
+          xcodebuild \
+            -project RealtekUVCFix.xcodeproj \
+            -target RealtekUVCFix \
+            -configuration Release \
+            -arch x86_64 \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CONFIGURATION_BUILD_DIR="$GITHUB_WORKSPACE/build/Release" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build \
+            2>&1 | tee "$RUNNER_TEMP/xcodebuild.log"
+
+      - name: Verify kext
+        shell: bash
+        run: |
+          set -e
+
+          KEXT="build/Release/RealtekUVCFix.kext"
+          BINARY="$KEXT/Contents/MacOS/RealtekUVCFix"
+
+          test -d "$KEXT"
+          test -f "$KEXT/Contents/Info.plist"
+          test -f "$BINARY"
+
+          plutil -lint "$KEXT/Contents/Info.plist"
+          file "$BINARY"
+          lipo -verify_arch x86_64 "$BINARY"
+
+      - name: Package kext
+        shell: bash
+        run: |
+          set -e
+
+          mkdir -p artifacts
+
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/Release/RealtekUVCFixSequoia.kext \
+            artifacts/RealtekUVCFix-macOS-15.8.2-24H232-x86_64.zip
+
+          shasum -a 256 artifacts/*.zip
+
+      - name: Upload kext artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RealtekUVCFix-macOS-15.8.2-24H232-x86_64
+          path: artifacts/RealtekUVCFix-macOS-15.8.2-24H232-x86_64.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RealtekUVCFix-build-log
+          path: ${{ runner.temp }}/xcodebuild.log
+          if-no-files-found: ignore
+          retention-days: 7
