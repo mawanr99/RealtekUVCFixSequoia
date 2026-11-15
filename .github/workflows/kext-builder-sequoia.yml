@@ -85,10 +85,13 @@ jobs:
 
           echo "Dependencies verified."
 
+
       - name: Build RealtekUVCFix
         shell: bash
         run: |
           set -o pipefail
+
+          mkdir -p "$GITHUB_WORKSPACE/build/Release"
 
           xcodebuild \
             -project RealtekUVCFix.xcodeproj \
@@ -96,7 +99,6 @@ jobs:
             -configuration Release \
             -arch x86_64 \
             ONLY_ACTIVE_ARCH=NO \
-            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             CONFIGURATION_BUILD_DIR="$GITHUB_WORKSPACE/build/Release" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
