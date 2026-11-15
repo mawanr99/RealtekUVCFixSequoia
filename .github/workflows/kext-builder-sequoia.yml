@@ -119,7 +119,7 @@ jobs:
 
           plutil -lint "$KEXT/Contents/Info.plist"
           file "$BINARY"
-          lipo -verify_arch x86_64 "$BINARY"
+          lipo "$BINARY" -verify_arch x86_64
 
       - name: Package kext
         shell: bash
